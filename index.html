@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Les puissances - Entraînement interactif</title>
+<style>
+  :root{
+    --bg:#f5f7fb;
+    --card:#ffffff;
+    --text:#1f2937;
+    --muted:#64748b;
+    --primary:#2563eb;
+    --primary2:#3b82f6;
+    --ok:#16a34a;
+    --bad:#dc2626;
+    --warn:#d97706;
+    --border:#dbe3ef;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:linear-gradient(135deg,#eef4ff,#f8fafc);
+    color:var(--text);
+  }
+  .app{
+    max-width:900px;
+    margin:auto;
+    padding:18px;
+  }
+  header{
+    background:linear-gradient(135deg,#2563eb,#60a5fa);
+    color:#fff;
+    border-radius:20px;
+    padding:24px;
+    box-shadow:0 10px 30px rgba(37,99,235,.18);
+  }
+  h1{margin:0 0 8px;font-size:clamp(28px,5vw,46px)}
+  header p{margin:0;opacity:.95;font-size:1.05rem}
+  .grid{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:16px;
+    margin-top:18px;
+  }
+  @media(min-width:760px){
+    .grid.two{grid-template-columns:1fr 1fr}
+  }
+  .card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:20px;
+    box-shadow:0 6px 20px rgba(15,23,42,.06);
+  }
+  .card h2{margin:0 0 10px}
+  .power{
+    font-size:2.2rem;
+    font-weight:800;
+    text-align:center;
+    margin:14px 0;
+    color:#0f172a;
+  }
+  .example{
+    background:#eff6ff;
+    border-left:5px solid var(--primary);
+    padding:14px;
+    border-radius:12px;
+    margin:12px 0;
+  }
+  .chips{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:10px;
+  }
+  .chip{
+    padding:8px 12px;
+    border-radius:999px;
+    background:#eef2ff;
+    border:1px solid #c7d2fe;
+    font-weight:700;
+  }
+  button{
+    border:0;
+    border-radius:12px;
+    padding:12px 16px;
+    font-weight:700;
+    cursor:pointer;
+    background:var(--primary);
+    color:#fff;
+    transition:.15s ease;
+  }
+  button:hover{transform:translateY(-1px)}
+  button.secondary{background:#e2e8f0;color:#0f172a}
+  button.choice{
+    width:100%;
+    text-align:left;
+    background:#fff;
+    color:#0f172a;
+    border:1px solid var(--border);
+    margin:6px 0;
+  }
+  button.choice:hover{background:#f8fafc}
+  button.choice.correct{background:#dcfce7;border-color:#86efac}
+  button.choice.wrong{background:#fee2e2;border-color:#fca5a5}
+  .progress{
+    height:14px;
+    border-radius:999px;
+    background:#e2e8f0;
+    overflow:hidden;
+    margin-top:10px;
+  }
+  .progress > div{
+    height:100%;
+    width:0%;
+    background:linear-gradient(90deg,#2563eb,#22c55e);
+    transition:.3s;
+  }
+  .status{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
+    font-weight:700;
+    margin-bottom:10px;
+  }
+  .question{
+    font-size:1.35rem;
+    font-weight:800;
+    margin:12px 0;
+  }
+  .feedback{
+    min-height:54px;
+    margin-top:12px;
+    padding:12px;
+    border-radius:12px;
+    font-weight:700;
+  }
+  .feedback.ok{background:#dcfce7;color:#166534}
+  .feedback.bad{background:#fee2e2;color:#991b1b}
+  .feedback.info{background:#eff6ff;color:#1d4ed8}
+  input[type="number"]{
+    width:100%;
+    padding:12px;
+    border-radius:12px;
+    border:1px solid var(--border);
+    font-size:1.1rem;
+    margin:8px 0;
+  }
+  .big-result{
+    text-align:center;
+    font-size:2rem;
+    font-weight:900;
+    margin:18px 0 10px;
+  }
+  .hidden{display:none}
+  footer{
+    text-align:center;
+    color:var(--muted);
+    padding:20px 0 8px;
+    font-size:.92rem;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>⚡ Les puissances</h1>
+    <p>Comprendre, tester, recommencer. Objectif : apprendre sans réciter bêtement.</p>
+  </header>
+
+  <div class="grid two">
+    <section class="card">
+      <h2>1. Comprendre</h2>
+      <p>Une puissance est une multiplication répétée.</p>
+      <div class="power">3<sup>4</sup></div>
+      <div class="example">
+        3<sup>4</sup> = 3 × 3 × 3 × 3 = <strong>81</strong>
+      </div>
+      <div class="chips">
+        <span class="chip">3 = base</span>
+        <span class="chip">4 = exposant</span>
+      </div>
+      <p style="margin-top:14px"><strong>Astuce :</strong> l’exposant dit combien de fois la base apparaît dans la multiplication.</p>
+    </section>
+
+    <section class="card">
+      <h2>2. Petit défi express</h2>
+      <p>Que signifie 5<sup>3</sup> ?</p>
+      <button class="choice mini" data-ok="false">5 × 3</button>
+      <button class="choice mini" data-ok="true">5 × 5 × 5</button>
+      <button class="choice mini" data-ok="false">3 × 3 × 3 × 3 × 3</button>
+      <div id="miniFeedback" class="feedback info">Choisis une réponse.</div>
+    </section>
+  </div>
+
+  <section class="card" style="margin-top:16px">
+    <div class="status">
+      <span id="levelLabel">Niveau 1 — Comprendre</span>
+      <span>Score : <span id="score">0</span></span>
+    </div>
+    <div class="progress"><div id="bar"></div></div>
+
+    <div id="quizZone">
+      <div id="question" class="question"></div>
+      <div id="choices"></div>
+
+      <div id="numericZone" class="hidden">
+        <input id="numberAnswer" type="number" placeholder="Entre ta réponse">
+        <button id="checkNumber">Valider</button>
+      </div>
+
+      <div id="feedback" class="feedback info">À toi de jouer !</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+        <button id="nextBtn" class="hidden">Question suivante</button>
+        <button id="restartBtn" class="secondary">Recommencer</button>
+      </div>
+    </div>
+
+    <div id="endZone" class="hidden">
+      <div class="big-result">🎉 Terminé !</div>
+      <p id="finalText" style="text-align:center"></p>
+      <div style="text-align:center"><button onclick="restartQuiz()">Refaire l’entraînement</button></div>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:16px">
+    <h2>3. Mémo ultra-court</h2>
+    <div class="example">
+      2<sup>4</sup> = 2 × 2 × 2 × 2 = 16
+    </div>
+    <p><strong>Même base, multiplication :</strong> 2<sup>3</sup> × 2<sup>2</sup> = 2<sup>5</sup></p>
+    <p><strong>Puissances de 10 :</strong> 10<sup>4</sup> = 10 000</p>
+  </section>
+
+  <footer>Exercice autonome — fonctionne hors ligne dans un navigateur.</footer>
+</div>
+
+<script>
+const questions = [
+  {
+    level:"Niveau 1 — Comprendre",
+    type:"choice",
+    q:"Que signifie 2⁴ ?",
+    choices:["2 × 4","2 × 2 × 2 × 2","4 × 4"],
+    answer:1,
+    explain:"2⁴ signifie que l'on multiplie 2 par lui-même 4 fois."
+  },
+  {
+    level:"Niveau 1 — Comprendre",
+    type:"choice",
+    q:"Dans 7³, quel nombre est l'exposant ?",
+    choices:["7","3","21"],
+    answer:1,
+    explain:"L'exposant est le petit nombre placé en haut : ici 3."
+  },
+  {
+    level:"Niveau 2 — Calculer",
+    type:"number",
+    q:"Calcule 3²",
+    answer:9,
+    explain:"3² = 3 × 3 = 9."
+  },
+  {
+    level:"Niveau 2 — Calculer",
+    type:"number",
+    q:"Calcule 2⁵",
+    answer:32,
+    explain:"2⁵ = 2 × 2 × 2 × 2 × 2 = 32."
+  },
+  {
+    level:"Niveau 2 — Calculer",
+    type:"number",
+    q:"Calcule 10⁴",
+    answer:10000,
+    explain:"10⁴ = 10 000 : l'exposant donne le nombre de zéros."
+  },
+  {
+    level:"Niveau 3 — Les règles",
+    type:"choice",
+    q:"2³ × 2² est égal à…",
+    choices:["2⁵","2⁶","4⁵"],
+    answer:0,
+    explain:"Même base : on additionne les exposants. 3 + 2 = 5."
+  },
+  {
+    level:"Niveau 3 — Les règles",
+    type:"choice",
+    q:"5⁶ ÷ 5² est égal à…",
+    choices:["5³","5⁴","1⁴"],
+    answer:1,
+    explain:"Même base : on soustrait les exposants. 6 - 2 = 4."
+  },
+  {
+    level:"Niveau 3 — Les règles",
+    type:"choice",
+    q:"(3²)⁴ est égal à…",
+    choices:["3⁶","3⁸","9⁴ = 3⁴"],
+    answer:1,
+    explain:"Puissance d'une puissance : on multiplie les exposants. 2 × 4 = 8."
+  }
+];
+
+let index = 0;
+let score = 0;
+let answered = false;
+
+const qEl = document.getElementById("question");
+const choicesEl = document.getElementById("choices");
+const numericZone = document.getElementById("numericZone");
+const numberAnswer = document.getElementById("numberAnswer");
+const checkNumber = document.getElementById("checkNumber");
+const feedback = document.getElementById("feedback");
+const nextBtn = document.getElementById("nextBtn");
+const scoreEl = document.getElementById("score");
+const bar = document.getElementById("bar");
+const levelLabel = document.getElementById("levelLabel");
+const quizZone = document.getElementById("quizZone");
+const endZone = document.getElementById("endZone");
+const finalText = document.getElementById("finalText");
+
+function renderQuestion(){
+  answered = false;
+  const item = questions[index];
+  levelLabel.textContent = item.level;
+  qEl.textContent = `${index+1}. ${item.q}`;
+  choicesEl.innerHTML = "";
+  numericZone.classList.add("hidden");
+  nextBtn.classList.add("hidden");
+  feedback.className = "feedback info";
+  feedback.textContent = "À toi de jouer !";
+  numberAnswer.value = "";
+  bar.style.width = `${(index/questions.length)*100}%`;
+
+  if(item.type === "choice"){
+    item.choices.forEach((c,i)=>{
+      const b = document.createElement("button");
+      b.className = "choice";
+      b.textContent = c;
+      b.onclick = ()=>answerChoice(i,b);
+      choicesEl.appendChild(b);
+    });
+  }else{
+    numericZone.classList.remove("hidden");
+    setTimeout(()=>numberAnswer.focus(),100);
+  }
+}
+
+function answerChoice(i,button){
+  if(answered) return;
+  answered = true;
+  const item = questions[index];
+  const buttons = [...choicesEl.querySelectorAll("button")];
+  buttons.forEach((b,j)=>{
+    if(j===item.answer) b.classList.add("correct");
+  });
+  if(i === item.answer){
+    score++;
+    feedback.className = "feedback ok";
+    feedback.textContent = "✅ Bravo ! " + item.explain;
+  }else{
+    button.classList.add("wrong");
+    feedback.className = "feedback bad";
+    feedback.textContent = "❌ Pas tout à fait. " + item.explain;
+  }
+  scoreEl.textContent = score;
+  nextBtn.classList.remove("hidden");
+}
+
+checkNumber.onclick = ()=>{
+  if(answered) return;
+  const val = Number(numberAnswer.value);
+  if(numberAnswer.value===""){
+    feedback.className = "feedback bad";
+    feedback.textContent = "Entre d'abord une réponse.";
+    return;
+  }
+  answered = true;
+  const item = questions[index];
+  if(val === item.answer){
+    score++;
+    feedback.className = "feedback ok";
+    feedback.textContent = "✅ Bravo ! " + item.explain;
+  }else{
+    feedback.className = "feedback bad";
+    feedback.textContent = `❌ La bonne réponse était ${item.answer}. ${item.explain}`;
+  }
+  scoreEl.textContent = score;
+  nextBtn.classList.remove("hidden");
+};
+
+numberAnswer.addEventListener("keydown",e=>{
+  if(e.key==="Enter") checkNumber.click();
+});
+
+nextBtn.onclick = ()=>{
+  index++;
+  if(index >= questions.length){
+    finishQuiz();
+  }else{
+    renderQuestion();
+  }
+};
+
+function finishQuiz(){
+  quizZone.classList.add("hidden");
+  endZone.classList.remove("hidden");
+  bar.style.width = "100%";
+  const pct = Math.round(score/questions.length*100);
+  let msg = "";
+  if(pct === 100) msg = "Excellent : tout est juste !";
+  else if(pct >= 75) msg = "Très bien : les bases sont bien comprises.";
+  else if(pct >= 50) msg = "Bien : encore un petit passage et ce sera solide.";
+  else msg = "Recommence tranquillement : l'objectif est de comprendre, pas d'aller vite.";
+  finalText.textContent = `Score : ${score}/${questions.length} — ${pct}% — ${msg}`;
+}
+
+function restartQuiz(){
+  index = 0;
+  score = 0;
+  scoreEl.textContent = "0";
+  quizZone.classList.remove("hidden");
+  endZone.classList.add("hidden");
+  renderQuestion();
+}
+
+document.getElementById("restartBtn").onclick = restartQuiz;
+
+document.querySelectorAll(".mini").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    const ok = btn.dataset.ok === "true";
+    const fb = document.getElementById("miniFeedback");
+    document.querySelectorAll(".mini").forEach(b=>b.classList.remove("correct","wrong"));
+    if(ok){
+      btn.classList.add("correct");
+      fb.className = "feedback ok";
+      fb.textContent = "✅ Exact ! 5³ = 5 × 5 × 5 = 125.";
+    }else{
+      btn.classList.add("wrong");
+      fb.className = "feedback bad";
+      fb.textContent = "❌ Regarde l'exposant : il indique combien de fois la base se répète.";
+    }
+  });
+});
+
+renderQuestion();
+</script>
+</body>
+</html>
