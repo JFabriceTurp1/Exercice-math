@@ -82,6 +82,39 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
 .hidden{display:none!important}
 .finish-btn{width:100%;margin-top:12px}
 
+
+.dynamic-page{flex:1;overflow:auto;padding:18px}
+.dynamic-card{max-width:900px;margin:0 auto 16px;background:#fff;border:1px solid var(--border);border-radius:18px;padding:20px;box-shadow:0 6px 20px rgba(15,23,42,.05)}
+.dynamic-hero{background:linear-gradient(135deg,#eff6ff,#f8fafc)}
+.dynamic-formula{text-align:center;font-size:clamp(24px,5vw,38px);font-weight:900;background:#f8fafc;border-radius:14px;padding:14px}
+.dynamic-note{background:#eff6ff;border-left:5px solid #2563eb;border-radius:12px;padding:14px}
+.dynamic-memo{background:#f0fdf4;border-left:5px solid #16a34a;border-radius:12px;padding:14px}
+.dynamic-squares{display:flex;gap:18px;flex-wrap:wrap;justify-content:center}
+.dynamic-square{text-align:center}
+.dynamic-square-grid{display:grid;gap:3px;justify-content:center;margin:8px auto;background:#e2e8f0;padding:6px;border-radius:10px}
+.dynamic-square-grid span{width:24px;height:24px;background:#93c5fd;border:1px solid #fff;border-radius:3px}
+.dynamic-numberline{position:relative;margin:34px 10px 20px;height:55px}
+.dynamic-numberline .line{position:absolute;left:0;right:0;top:20px;height:4px;background:#334155}
+.dynamic-numberline .tick{position:absolute;top:12px;width:2px;height:20px;background:#334155}
+.dynamic-numberline .label{position:absolute;top:35px;transform:translateX(-50%);font-size:.8rem}
+.dynamic-numberline .mark{position:absolute;top:8px;width:16px;height:16px;border-radius:50%;background:#ef4444;transform:translateX(-50%)}
+.dynamic-fraction{display:flex;gap:3px;justify-content:center;flex-wrap:wrap}
+.dynamic-fraction span{width:42px;height:42px;border:1px solid #94a3b8;background:#fff}
+.dynamic-fraction span.on{background:#60a5fa}
+.dynamic-gauge{height:24px;background:#e2e8f0;border-radius:999px;overflow:hidden}
+.dynamic-gauge>div{height:100%;background:#16a34a}
+.dynamic-test-btn{width:100%;border:0;border-radius:14px;padding:15px;background:#2563eb;color:#fff;font-size:1.05rem;font-weight:900;cursor:pointer}
+.dynamic-test-overlay{position:absolute;inset:44px 0 0;background:#eef3f9;display:none;z-index:30;overflow:auto}
+.dynamic-test-overlay.active{display:block}
+.dynamic-test-shell{max-width:760px;margin:auto;padding:18px}
+.dynamic-choice{width:100%;text-align:left;border:1px solid var(--border);background:#fff;border-radius:12px;padding:12px;margin:6px 0;font-weight:700;cursor:pointer}
+.dynamic-choice.correct{background:#dcfce7}.dynamic-choice.wrong{background:#fee2e2}
+.dynamic-feedback{padding:12px;border-radius:12px;margin-top:12px;background:#eff6ff;color:#1d4ed8;font-weight:750}
+.dynamic-progress{height:12px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin:12px 0 18px}
+.dynamic-progress>div{height:100%;background:linear-gradient(90deg,#2563eb,#16a34a);width:0}
+.dynamic-number-input{width:100%;padding:13px;border:1px solid var(--border);border-radius:12px;font-size:1.1rem;margin:8px 0}
+.dynamic-primary{border:0;border-radius:12px;padding:12px 16px;background:#2563eb;color:#fff;font-weight:850;cursor:pointer}
+
 @media(max-width:700px){
   .exercise-grid{grid-template-columns:1fr}
   .math-sign{width:100%;text-align:center}
@@ -116,7 +149,7 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
   </header>
 
   <main class="home">
-    <div class="exercise-grid">
+    <div id="exerciseGrid" class="exercise-grid">
       <a class="exercise-card" href="#powersView" data-exercise-id="puissances">
         <div><div class="emoji">⚡</div><h3>Les puissances</h3><p>Petit cours, visualisation et test.</p></div>
         <div class="open">Ouvrir le chapitre →</div>
@@ -281,6 +314,32 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
   </div>
 </div>
 
+
+
+<div id="dynamicView" class="exercise-view">
+  <div class="topbar"><strong id="dynamicTopTitle">🧠 Activité</strong><a class="quit-btn" href="#">← Retour</a></div>
+  <div id="dynamicContent" class="dynamic-page"></div>
+  <div id="dynamicTestOverlay" class="dynamic-test-overlay">
+    <div class="dynamic-test-shell">
+      <div class="dynamic-card">
+        <div style="display:flex;justify-content:space-between;gap:10px;font-weight:850">
+          <span id="dynamicLevel">Test</span>
+          <span>Score : <span id="dynamicScore">0</span>/<span id="dynamicTotal">8</span></span>
+        </div>
+        <div class="dynamic-progress"><div id="dynamicBar"></div></div>
+        <h2 id="dynamicQuestion"></h2>
+        <div id="dynamicChoices"></div>
+        <div id="dynamicNumberZone" style="display:none">
+          <input id="dynamicNumberInput" class="dynamic-number-input" type="number" step="0.01" placeholder="Entre ta réponse">
+          <button id="dynamicCheckNumber" class="dynamic-primary">Valider la réponse</button>
+        </div>
+        <div id="dynamicFeedback" class="dynamic-feedback">À toi de jouer !</div>
+        <button id="dynamicNext" class="dynamic-primary" style="display:none;margin-top:12px">Question suivante</button>
+        <button id="dynamicFinish" class="dynamic-primary" style="display:none;margin-top:12px;width:100%">✅ Valider mon test</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 (function(){
@@ -537,6 +596,199 @@ const auth=getAuth(app);
 const db=getFirestore(app);
 const state=null;
 
+let studentConfig={puissances:true,pythagore:true};
+let dynamicActivities={};
+let activeDynamic=null;
+let dqIndex=0,dqScore=0,dqAnswered=false;
+
+function applyAllVisibility(){
+  document.querySelectorAll("[data-exercise-id]").forEach(card=>{
+    const id=card.dataset.exerciseId;
+    const visible=(typeof studentConfig[id]==="boolean") ? studentConfig[id] : true;
+    card.classList.toggle("is-hidden",!visible);
+  });
+}
+
+async function registerOpen(id){
+  try{
+    await ensureAuth();
+    await setDoc(doc(db,"eleves","abel","usage",id),{
+      ouvertures:increment(1),derniereOuverture:serverTimestamp(),majPar:"eleve"
+    },{merge:true});
+  }catch(e){ console.warn("Comptage ouverture",e); }
+}
+
+function createDynamicCard(a){
+  const link=document.createElement("a");
+  link.className="exercise-card dynamic-imported";
+  link.href="#dynamicView";
+  link.dataset.exerciseId=a.id;
+
+  const top=document.createElement("div");
+  const emoji=document.createElement("div"); emoji.className="emoji"; emoji.textContent=a.emoji||"🧠";
+  const h=document.createElement("h3"); h.textContent=a.title;
+  const p=document.createElement("p"); p.textContent=a.description;
+  top.append(emoji,h,p);
+
+  const open=document.createElement("div"); open.className="open"; open.textContent="Ouvrir le chapitre →";
+  link.append(top,open);
+
+  link.addEventListener("click",()=>{
+    renderDynamicActivity(a);
+    registerOpen(a.id);
+  });
+  return link;
+}
+
+function renderDynamicCards(){
+  const grid=document.getElementById("exerciseGrid");
+  if(!grid) return;
+  grid.querySelectorAll(".dynamic-imported").forEach(n=>n.remove());
+  Object.values(dynamicActivities)
+    .sort((a,b)=>a.title.localeCompare(b.title,"fr"))
+    .forEach(a=>grid.appendChild(createDynamicCard(a)));
+  applyAllVisibility();
+}
+
+function lessonBlock(b){
+  const card=document.createElement("section"); card.className="dynamic-card";
+  if(b.title){const h=document.createElement("h2");h.textContent=b.title;card.appendChild(h);}
+
+  if(b.type==="text"||b.type==="note"){
+    const d=document.createElement("div");
+    if(b.type==="note") d.className="dynamic-note";
+    d.textContent=b.text||"";
+    card.appendChild(d);
+  }else if(b.type==="formula"){
+    const d=document.createElement("div");d.className="dynamic-formula";d.textContent=b.formula||"";card.appendChild(d);
+    if(b.caption){const p=document.createElement("p");p.textContent=b.caption;card.appendChild(p);}
+  }else if(b.type==="memo"){
+    const box=document.createElement("div");box.className="dynamic-memo";
+    const ul=document.createElement("ul");
+    (b.items||[]).forEach(x=>{const li=document.createElement("li");li.textContent=x;ul.appendChild(li);});
+    box.appendChild(ul);card.appendChild(box);
+  }else if(b.type==="squares"){
+    const wrap=document.createElement("div");wrap.className="dynamic-squares";
+    (b.grids||[]).forEach(g=>{
+      const n=Math.max(1,Math.min(10,Number(g.n)||1));
+      const box=document.createElement("div");box.className="dynamic-square";
+      const s=document.createElement("strong");s.textContent=g.label||`${n}² = ${n*n}`;
+      const gr=document.createElement("div");gr.className="dynamic-square-grid";gr.style.gridTemplateColumns=`repeat(${n},24px)`;
+      for(let i=0;i<n*n;i++)gr.appendChild(document.createElement("span"));
+      box.append(s,gr);wrap.appendChild(box);
+    });card.appendChild(wrap);
+  }else if(b.type==="numberLine"){
+    const min=Number(b.min),max=Number(b.max);
+    const line=document.createElement("div");line.className="dynamic-numberline";
+    const base=document.createElement("div");base.className="line";line.appendChild(base);
+    if(Number.isFinite(min)&&Number.isFinite(max)&&max>min){
+      for(let v=Math.ceil(min);v<=Math.floor(max);v++){
+        const pct=(v-min)/(max-min)*100;
+        const tick=document.createElement("div");tick.className="tick";tick.style.left=pct+"%";
+        const lab=document.createElement("div");lab.className="label";lab.style.left=pct+"%";lab.textContent=v;
+        line.append(tick,lab);
+      }
+      (b.markers||[]).forEach(m=>{
+        const v=Number(m.value);
+        if(v>=min&&v<=max){const mark=document.createElement("div");mark.className="mark";mark.style.left=((v-min)/(max-min)*100)+"%";mark.title=m.label||String(v);line.appendChild(mark);}
+      });
+    }
+    card.appendChild(line);
+  }else if(b.type==="fractionBar"){
+    const den=Math.max(1,Math.min(20,Number(b.denominator)||1)),num=Math.max(0,Math.min(den,Number(b.numerator)||0));
+    const wrap=document.createElement("div");wrap.className="dynamic-fraction";
+    for(let i=0;i<den;i++){const s=document.createElement("span");if(i<num)s.classList.add("on");wrap.appendChild(s);}
+    card.appendChild(wrap);
+    const p=document.createElement("p");p.style.textAlign="center";p.style.fontWeight="850";p.textContent=b.label||`${num}/${den}`;card.appendChild(p);
+  }else if(b.type==="gauge"){
+    const pct=Math.max(0,Math.min(100,Number(b.percent)||0));
+    const g=document.createElement("div");g.className="dynamic-gauge";const fill=document.createElement("div");fill.style.width=pct+"%";g.appendChild(fill);card.appendChild(g);
+    const p=document.createElement("p");p.style.textAlign="center";p.style.fontWeight="850";p.textContent=b.label||`${pct} %`;card.appendChild(p);
+  }
+  return card;
+}
+
+function renderDynamicActivity(a){
+  activeDynamic=a;
+  const content=document.getElementById("dynamicContent");content.innerHTML="";
+  document.getElementById("dynamicTopTitle").textContent=(a.emoji||"🧠")+" "+a.title;
+
+  const hero=document.createElement("section");hero.className="dynamic-card dynamic-hero";
+  const h=document.createElement("h1");h.textContent=(a.emoji||"🧠")+" "+a.title;
+  const p=document.createElement("p");p.textContent=a.description;hero.append(h,p);content.appendChild(hero);
+
+  (a.lesson||[]).forEach(b=>content.appendChild(lessonBlock(b)));
+
+  const test=document.createElement("section");test.className="dynamic-card";
+  const btn=document.createElement("button");btn.className="dynamic-test-btn";btn.textContent="🧠 Tester mes connaissances";btn.addEventListener("click",startDynamicTest);
+  test.appendChild(btn);content.appendChild(test);
+}
+
+function startDynamicTest(){
+  if(!activeDynamic)return;
+  dqIndex=0;dqScore=0;dqAnswered=false;
+  document.getElementById("dynamicScore").textContent="0";
+  document.getElementById("dynamicTotal").textContent=String(activeDynamic.quiz.length);
+  document.getElementById("dynamicTestOverlay").classList.add("active");
+  renderDynamicQuestion();
+}
+
+function renderDynamicQuestion(){
+  const q=activeDynamic.quiz[dqIndex];dqAnswered=false;
+  document.getElementById("dynamicLevel").textContent=q.level||("Question "+(dqIndex+1));
+  document.getElementById("dynamicQuestion").textContent=(dqIndex+1)+". "+q.question;
+  document.getElementById("dynamicBar").style.width=(dqIndex/activeDynamic.quiz.length*100)+"%";
+  const fb=document.getElementById("dynamicFeedback");fb.textContent="À toi de jouer !";fb.style.background="#eff6ff";fb.style.color="#1d4ed8";
+  document.getElementById("dynamicNext").style.display="none";document.getElementById("dynamicFinish").style.display="none";
+  const choices=document.getElementById("dynamicChoices");choices.innerHTML="";
+  const nz=document.getElementById("dynamicNumberZone");nz.style.display="none";
+  document.getElementById("dynamicNumberInput").value="";
+
+  if(q.type==="choice"){
+    q.choices.forEach((label,i)=>{
+      const b=document.createElement("button");b.className="dynamic-choice";b.textContent=label;
+      b.addEventListener("click",()=>answerDynamicChoice(i,b));choices.appendChild(b);
+    });
+  }else nz.style.display="block";
+}
+
+function afterDynamicAnswer(){
+  const total=activeDynamic.quiz.length;
+  document.getElementById("dynamicScore").textContent=String(dqScore);
+  document.getElementById("dynamicBar").style.width=((dqIndex+1)/total*100)+"%";
+  saveExercise({exerciseId:activeDynamic.id,exerciseName:activeDynamic.title,type:"progress",total,answered:dqIndex+1,score:dqScore}).catch(console.warn);
+  if(dqIndex===total-1)document.getElementById("dynamicFinish").style.display="block";
+  else document.getElementById("dynamicNext").style.display="inline-block";
+}
+
+function answerDynamicChoice(i,b){
+  if(dqAnswered)return;dqAnswered=true;const q=activeDynamic.quiz[dqIndex];
+  const buttons=[...document.querySelectorAll("#dynamicChoices .dynamic-choice")];
+  if(buttons[q.answer])buttons[q.answer].classList.add("correct");
+  const fb=document.getElementById("dynamicFeedback");
+  if(i===q.answer){dqScore++;fb.textContent="✅ "+q.explanation;fb.style.background="#dcfce7";fb.style.color="#166534";}
+  else{b.classList.add("wrong");fb.textContent="❌ "+q.explanation;fb.style.background="#fee2e2";fb.style.color="#991b1b";}
+  afterDynamicAnswer();
+}
+
+document.getElementById("dynamicCheckNumber").addEventListener("click",()=>{
+  if(dqAnswered)return;const q=activeDynamic.quiz[dqIndex];const inp=document.getElementById("dynamicNumberInput");const fb=document.getElementById("dynamicFeedback");
+  if(inp.value===""){fb.textContent="Entre une réponse.";return;}
+  dqAnswered=true;const val=Number(inp.value),tol=Number(q.tolerance)||0;
+  if(Math.abs(val-Number(q.answer))<=tol){dqScore++;fb.textContent="✅ "+q.explanation;fb.style.background="#dcfce7";fb.style.color="#166534";}
+  else{fb.textContent="❌ Bonne réponse : "+q.answer+". "+q.explanation;fb.style.background="#fee2e2";fb.style.color="#991b1b";}
+  afterDynamicAnswer();
+});
+document.getElementById("dynamicNext").addEventListener("click",()=>{dqIndex++;renderDynamicQuestion();});
+document.getElementById("dynamicFinish").addEventListener("click",async()=>{
+  const total=activeDynamic.quiz.length;
+  try{await saveExercise({exerciseId:activeDynamic.id,exerciseName:activeDynamic.title,type:"completed",total,answered:total,score:dqScore});}
+  catch(e){console.warn("Sauvegarde test importé",e);}
+  document.getElementById("dynamicTestOverlay").classList.remove("active");
+  alert("Test terminé : "+dqScore+" / "+total);
+});
+
+
 function setSync(text, ok=true){
   if(ok) console.log("[sync]", text);
   else console.warn("[sync]", text);
@@ -613,35 +865,30 @@ async function startParentPilotage(){
     await ensureAuth();
 
     onSnapshot(
+      collection(db,"eleves","abel","catalogue"),
+      snap=>{
+        dynamicActivities={};
+        snap.forEach(ds=>{
+          const d=ds.data();
+          if(d?.activity?.id) dynamicActivities[d.activity.id]=d.activity;
+        });
+        renderDynamicCards();
+      },
+      err=>console.warn("Lecture catalogue impossible :",err)
+    );
+
+    onSnapshot(
       doc(db,"eleves","abel","config","exercices"),
       snap=>{
-        const cfg=snap.exists()?snap.data():{};
-        document.querySelectorAll("[data-exercise-id]").forEach(card=>{
-          const id=card.dataset.exerciseId;
-          const visible=(typeof cfg[id]==="boolean") ? cfg[id] : true;
-          card.classList.toggle("is-hidden",!visible);
-        });
+        studentConfig=Object.assign({puissances:true,pythagore:true},snap.exists()?snap.data():{});
+        applyAllVisibility();
       },
       err=>console.warn("Lecture configuration Parent impossible :",err)
     );
 
     document.querySelectorAll("[data-exercise-id]").forEach(card=>{
-      card.addEventListener("click",async()=>{
-        const exerciseId=card.dataset.exerciseId;
-        try{
-          await setDoc(
-            doc(db,"eleves","abel","usage",exerciseId),
-            {
-              ouvertures:increment(1),
-              derniereOuverture:serverTimestamp(),
-              majPar:"eleve"
-            },
-            {merge:true}
-          );
-        }catch(err){
-          console.warn("Compteur d'ouverture indisponible :",err);
-        }
-      });
+      if(card.classList.contains("dynamic-imported"))return;
+      card.addEventListener("click",()=>registerOpen(card.dataset.exerciseId));
     });
   }catch(err){
     console.warn("Pilotage Parent indisponible :",err);
