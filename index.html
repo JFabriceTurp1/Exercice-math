@@ -518,7 +518,7 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+import { getAuth, signInAnonymously, setPersistence, inMemoryPersistence } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc, addDoc, collection, serverTimestamp, increment, onSnapshot } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
 
 
@@ -532,7 +532,7 @@ const firebaseConfig = {
 };
 
 
-const app=initializeApp(firebaseConfig);
+const app=initializeApp(firebaseConfig,"abel-student-app");
 const auth=getAuth(app);
 const db=getFirestore(app);
 const state=null;
@@ -545,6 +545,7 @@ function setSync(text, ok=true){
 async function ensureAuth(){
   if(auth.currentUser) return auth.currentUser;
   try{
+    await setPersistence(auth,inMemoryPersistence);
     const cred=await signInAnonymously(auth);
     return cred.user;
   }catch(err){
