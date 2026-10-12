@@ -73,9 +73,9 @@ h1{margin:0;font-size:clamp(25px,4vw,40px)} .subtitle{margin:4px 0 0;opacity:.92
 </script>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/13.0.0/firebase-firestore.js";
 
 
 const firebaseConfig = {
@@ -93,14 +93,33 @@ const auth=getAuth(app);
 const db=getFirestore(app);
 const state=document.getElementById("syncState");
 
+function setSync(text, ok=true){
+  state.textContent=text;
+  state.style.background=ok ? "#0f172a" : "#991b1b";
+}
+
 async function ensureAuth(){
   if(auth.currentUser) return auth.currentUser;
-  const cred=await signInAnonymously(auth);
-  return cred.user;
+  try{
+    const cred=await signInAnonymously(auth);
+    return cred.user;
+  }catch(err){
+    console.error("AUTH ANONYME:", err);
+    if(err && err.code==="auth/operation-not-allowed"){
+      setSync("⚠ Activer Anonymous dans Firebase", false);
+    }else if(err && err.code==="auth/unauthorized-domain"){
+      setSync("⚠ Domaine GitHub non autorisé", false);
+    }else{
+      setSync("⚠ Auth Firebase impossible", false);
+    }
+    throw err;
+  }
 }
 
 async function saveExercise(msg){
-  await ensureAuth();
+  const user=await ensureAuth();
+  if(!user) throw new Error("Utilisateur Firebase absent");
+
   const ref=doc(db,"eleves","abel","exercices",msg.exerciseId);
   const snap=await getDoc(ref);
   const old=snap.exists()?snap.data():{};
@@ -122,6 +141,16 @@ async function saveExercise(msg){
   };
   await setDoc(ref,payload,{merge:true});
 
+  // Copie locale de sécurité : utile si le réseau coupe juste après l'exercice.
+  try{
+    localStorage.setItem("abel_last_sync_"+msg.exerciseId, JSON.stringify({
+      score:lastScore,
+      total,
+      type:msg.type,
+      date:new Date().toISOString()
+    }));
+  }catch(e){}
+
   if(msg.type==="completed"){
     await addDoc(collection(db,"eleves","abel","historique"),{
       exerciceId:msg.exerciseId,
@@ -135,23 +164,29 @@ async function saveExercise(msg){
 }
 
 try{
-  await ensureAuth();
-  state.textContent="✓ Synchronisé";
+  const user=await ensureAuth();
+  setSync("✓ Firebase connecté");
+  console.log("Firebase anonyme connecté :", user.uid);
 }catch(e){
-  state.textContent="⚠ Hors ligne";
-  console.error(e);
+  console.error("Connexion Firebase élève impossible :",e);
 }
 
 window.addEventListener("message",async e=>{
   const m=e.data;
   if(!m||m.source!=="abel-maths-exercise")return;
   try{
-    state.textContent="Synchronisation…";
+    setSync("Synchronisation…");
     await saveExercise(m);
-    state.textContent="✓ Synchronisé";
+    setSync("✓ Résultat envoyé");
   }catch(err){
-    console.error(err);
-    state.textContent="⚠ Sync impossible";
+    console.error("ERREUR ECRITURE FIRESTORE :",err);
+    if(err && err.code==="permission-denied"){
+      setSync("⚠ Règles Firestore refusent l’écriture", false);
+    }else if(err && err.code==="unavailable"){
+      setSync("⚠ Firebase indisponible", false);
+    }else if(!(err && err.code==="auth/operation-not-allowed")){
+      setSync("⚠ Envoi Firebase impossible", false);
+    }
   }
 });
 </script>
