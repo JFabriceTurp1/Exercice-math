@@ -165,7 +165,7 @@ async function saveExercise(msg){
 
 try{
   const user=await ensureAuth();
-  setSync("✓ Firebase connecté");
+  setSync("✓ Firebase connecté — aucun résultat envoyé");
   console.log("Firebase anonyme connecté :", user.uid);
 }catch(e){
   console.error("Connexion Firebase élève impossible :",e);
@@ -174,10 +174,17 @@ try{
 window.addEventListener("message",async e=>{
   const m=e.data;
   if(!m||m.source!=="abel-maths-exercise")return;
+  console.log("Événement exercice reçu :",m);
   try{
     setSync("Synchronisation…");
     await saveExercise(m);
-    setSync("✓ Résultat envoyé");
+    if(m.type==="completed"){
+      setSync("✓ Résultat final envoyé : "+m.exerciseName+" "+(m.score||0)+"/"+(m.total||8));
+    }else if(m.type==="progress"){
+      setSync("✓ Progression envoyée : "+m.exerciseName+" "+(m.answered||0)+"/"+(m.total||8));
+    }else{
+      setSync("✓ Donnée envoyée à Firebase");
+    }
   }catch(err){
     console.error("ERREUR ECRITURE FIRESTORE :",err);
     if(err && err.code==="permission-denied"){
