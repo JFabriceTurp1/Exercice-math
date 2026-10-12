@@ -313,10 +313,13 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
 
   document.querySelectorAll("[data-open]").forEach(card=>{
     card.addEventListener("click",()=>{
-      const exId=card.dataset.exerciseId;
-      if(exId) registerExerciseOpen(exId);
       document.getElementById(card.dataset.open).classList.add("active");
       document.body.style.overflow="hidden";
+
+      const exerciseId=card.dataset.exerciseId;
+      if(exerciseId){
+        window.dispatchEvent(new CustomEvent("abel-exercise-open",{detail:{exerciseId}}));
+      }
     });
   });
 
@@ -552,40 +555,6 @@ const app=initializeApp(firebaseConfig);
 const auth=getAuth(app);
 const db=getFirestore(app);
 const state=null;
-const EXERCISE_CONFIG_DEFAULTS={puissances:true,pythagore:true};
-
-function applyExerciseVisibility(config){
-  document.querySelectorAll("[data-exercise-id]").forEach(card=>{
-    const id=card.dataset.exerciseId;
-    const visible=(config && typeof config[id]==="boolean")
-      ? config[id]
-      : (EXERCISE_CONFIG_DEFAULTS[id]!==false);
-    card.classList.toggle("is-hidden",!visible);
-  });
-}
-
-onSnapshot(
-  doc(db,"eleves","abel","config","exercices"),
-  snap=>applyExerciseVisibility(snap.exists()?snap.data():EXERCISE_CONFIG_DEFAULTS),
-  err=>{
-    console.warn("Config exercices indisponible",err);
-    applyExerciseVisibility(EXERCISE_CONFIG_DEFAULTS);
-  }
-);
-
-async function registerExerciseOpen(exerciseId){
-  try{
-    await ensureAuth();
-    await setDoc(
-      doc(db,"eleves","abel","usage",exerciseId),
-      {ouvertures:increment(1),derniereOuverture:serverTimestamp(),majPar:"eleve"},
-      {merge:true}
-    );
-  }catch(err){
-    console.warn("Comptage ouverture impossible",err);
-  }
-}
-
 
 function setSync(text, ok=true){
   if(ok) console.log("[sync]", text);
@@ -657,10 +626,55 @@ async function saveExercise(msg){
   }
 }
 
+async function startParentalControls(){
+  try{
+    await ensureAuth();
+
+    // Only start Firestore listeners once anonymous authentication exists.
+    onSnapshot(
+      doc(db,"eleves","abel","config","exercices"),
+      snap=>{
+        const cfg=snap.exists()?snap.data():{};
+        document.querySelectorAll("[data-exercise-id]").forEach(card=>{
+          const id=card.dataset.exerciseId;
+          const visible = (typeof cfg[id]==="boolean") ? cfg[id] : true;
+          card.classList.toggle("is-hidden", !visible);
+        });
+      },
+      err=>{
+        // If configuration cannot be read, keep chapters usable rather than freezing the portal.
+        console.warn("Lecture du pilotage Parent impossible :",err);
+      }
+    );
+
+    window.addEventListener("abel-exercise-open",async ev=>{
+      const exerciseId=ev.detail && ev.detail.exerciseId;
+      if(!exerciseId) return;
+      try{
+        await setDoc(
+          doc(db,"eleves","abel","usage",exerciseId),
+          {
+            ouvertures:increment(1),
+            derniereOuverture:serverTimestamp(),
+            majPar:"eleve"
+          },
+          {merge:true}
+        );
+      }catch(err){
+        console.warn("Comptage d'ouverture impossible :",err);
+      }
+    });
+
+    console.log("Pilotage Parent actif.");
+  }catch(err){
+    console.warn("Pilotage Parent non démarré :",err);
+  }
+}
+
 try{
   const user=await ensureAuth();
-  setSync("✓ Firebase connecté — aucun résultat envoyé");
   console.log("Firebase anonyme connecté :", user.uid);
+  await startParentalControls();
 }catch(e){
   console.error("Connexion Firebase élève impossible :",e);
 }
