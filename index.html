@@ -27,7 +27,7 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
 .exercise-card .emoji{font-size:44px}
 .exercise-card h3{margin:10px 0 5px;font-size:1.4rem}
 .exercise-card p{margin:0;color:var(--muted)}
-.open{margin-top:18px;font-weight:900;color:#1d4ed8}
+.open{margin-top:18px;font-weight:900;color:#1d4ed8}.exercise-card.is-hidden{display:none!important}
 
 .exercise-view{position:fixed;inset:0;z-index:1000;background:#eef3f9;display:none;flex-direction:column}
 .exercise-view.active{display:flex}
@@ -117,12 +117,12 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
 
   <main class="home">
     <div class="exercise-grid">
-      <article class="exercise-card" data-open="powersView">
+      <article class="exercise-card" data-open="powersView" data-exercise-id="puissances">
         <div><div class="emoji">⚡</div><h3>Les puissances</h3><p>Petit cours, visualisation et test.</p></div>
         <div class="open">Ouvrir le chapitre →</div>
       </article>
 
-      <article class="exercise-card" data-open="pythView">
+      <article class="exercise-card" data-open="pythView" data-exercise-id="pythagore">
         <div><div class="emoji">📐</div><h3>Théorème de Pythagore</h3><p>Visualisation avec les petits carreaux puis test.</p></div>
         <div class="open">Ouvrir le chapitre →</div>
       </article>
@@ -313,6 +313,8 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
 
   document.querySelectorAll("[data-open]").forEach(card=>{
     card.addEventListener("click",()=>{
+      const exId=card.dataset.exerciseId;
+      if(exId) registerExerciseOpen(exId);
       document.getElementById(card.dataset.open).classList.add("active");
       document.body.style.overflow="hidden";
     });
@@ -550,6 +552,40 @@ const app=initializeApp(firebaseConfig);
 const auth=getAuth(app);
 const db=getFirestore(app);
 const state=null;
+const EXERCISE_CONFIG_DEFAULTS={puissances:true,pythagore:true};
+
+function applyExerciseVisibility(config){
+  document.querySelectorAll("[data-exercise-id]").forEach(card=>{
+    const id=card.dataset.exerciseId;
+    const visible=(config && typeof config[id]==="boolean")
+      ? config[id]
+      : (EXERCISE_CONFIG_DEFAULTS[id]!==false);
+    card.classList.toggle("is-hidden",!visible);
+  });
+}
+
+onSnapshot(
+  doc(db,"eleves","abel","config","exercices"),
+  snap=>applyExerciseVisibility(snap.exists()?snap.data():EXERCISE_CONFIG_DEFAULTS),
+  err=>{
+    console.warn("Config exercices indisponible",err);
+    applyExerciseVisibility(EXERCISE_CONFIG_DEFAULTS);
+  }
+);
+
+async function registerExerciseOpen(exerciseId){
+  try{
+    await ensureAuth();
+    await setDoc(
+      doc(db,"eleves","abel","usage",exerciseId),
+      {ouvertures:increment(1),derniereOuverture:serverTimestamp(),majPar:"eleve"},
+      {merge:true}
+    );
+  }catch(err){
+    console.warn("Comptage ouverture impossible",err);
+  }
+}
+
 
 function setSync(text, ok=true){
   if(ok) console.log("[sync]", text);
