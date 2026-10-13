@@ -83,6 +83,22 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
 .finish-btn{width:100%;margin-top:12px}
 
 
+
+.reward-box{max-width:1050px;margin:0 auto 20px;background:linear-gradient(135deg,#fff7ed,#fffbeb);border:1px solid #fed7aa;border-radius:20px;padding:18px;box-shadow:0 8px 22px rgba(15,23,42,.05)}
+.reward-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.reward-wallet{font-size:clamp(26px,5vw,40px);font-weight:950;color:#92400e}
+.reward-rules{margin-top:10px;padding:12px 14px;background:#fff;border-radius:12px;color:#475569}
+.reward-progress-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:12px}
+.reward-progress-card{background:#fff;border:1px solid #fde68a;border-radius:14px;padding:13px}
+.reward-progress-card h4{margin:0 0 8px}
+.reward-mini{display:flex;justify-content:space-between;gap:10px;margin:5px 0;font-size:.92rem}
+.reward-bar{height:9px;background:#f1f5f9;border-radius:999px;overflow:hidden;margin:8px 0}
+.reward-bar>div{height:100%;background:#f59e0b}
+.reward-state{font-weight:900;margin-top:8px}
+.reward-won{color:#166534}
+.reward-pending{color:#92400e}
+.reward-expired{color:#991b1b}
+
 .dynamic-page{flex:1;overflow:auto;padding:18px}
 .dynamic-card{max-width:900px;margin:0 auto 16px;background:#fff;border:1px solid var(--border);border-radius:18px;padding:20px;box-shadow:0 6px 20px rgba(15,23,42,.05)}
 .dynamic-hero{background:linear-gradient(135deg,#eff6ff,#f8fafc)}
@@ -149,6 +165,21 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
   </header>
 
   <main class="home">
+    <section id="rewardBox" class="reward-box">
+      <div class="reward-head">
+        <div>
+          <div style="font-weight:900;font-size:1.15rem">🏆 Mes défis récompense</div>
+          <div style="color:#64748b">Progresse régulièrement pour remplir tes objectifs.</div>
+        </div>
+        <div>
+          <div style="font-size:.85rem;color:#92400e;font-weight:800">Ma cagnotte à recevoir</div>
+          <div id="rewardWallet" class="reward-wallet">0,00 €</div>
+        </div>
+      </div>
+      <div id="rewardRules" class="reward-rules">Chargement des règles…</div>
+      <div id="rewardProgressList" class="reward-progress-list"></div>
+    </section>
+
     <div id="exerciseGrid" class="exercise-grid">
       <a class="exercise-card" href="#powersView" data-exercise-id="puissances">
         <div><div class="emoji">⚡</div><h3>Les puissances</h3><p>Petit cours, visualisation et test.</p></div>
@@ -596,6 +627,273 @@ const auth=getAuth(app);
 const db=getFirestore(app);
 const state=null;
 
+const DEFAULT_REWARD_CONFIG={
+  enabled:true,
+  amount:1,
+  requiredOpenings:10,
+  requiredSuccessfulTests:3,
+  minScorePct:80,
+  windowHours:72,
+  minReadSeconds:60,
+  cooldownMinutes:30,
+  exerciseEnabled:{}
+};
+
+let rewardConfig={...DEFAULT_REWARD_CONFIG};
+let rewardProgress={};
+const rewardTimers=new Map();
+
+function rewardCfgFor(id){
+  const enabledGlobal=rewardConfig.enabled!==false;
+  const exMap=rewardConfig.exerciseEnabled||{};
+  const enabledExercise=(typeof exMap[id]==="boolean") ? exMap[id] : true;
+  return {...DEFAULT_REWARD_CONFIG,...rewardConfig,enabled:enabledGlobal && enabledExercise};
+}
+
+function tsMillis(ts){
+  if(!ts) return null;
+  if(typeof ts.toMillis==="function") return ts.toMillis();
+  if(typeof ts.seconds==="number") return ts.seconds*1000;
+  const d=new Date(ts);
+  return Number.isFinite(d.getTime())?d.getTime():null;
+}
+
+function exerciseTitle(id){
+  if(id==="puissances") return "Les puissances";
+  if(id==="pythagore") return "Théorème de Pythagore";
+  return dynamicActivities[id]?.title || id;
+}
+
+function activeRewardIds(){
+  const ids=["puissances","pythagore",...Object.keys(dynamicActivities)];
+  return [...new Set(ids)].filter(id=>{
+    const published=(typeof studentConfig[id]==="boolean") ? studentConfig[id] : true;
+    return published && rewardCfgFor(id).enabled;
+  });
+}
+
+function formatMoney(v){
+  return new Intl.NumberFormat("fr-FR",{style:"currency",currency:"EUR"}).format(Number(v)||0);
+}
+
+function formatRemaining(ms){
+  if(ms<=0) return "délai terminé";
+  const h=Math.floor(ms/3600000);
+  const m=Math.floor((ms%3600000)/60000);
+  return `${h} h ${m.toString().padStart(2,"0")}`;
+}
+
+function renderRewards(){
+  const wallet=document.getElementById("rewardWallet");
+  const rules=document.getElementById("rewardRules");
+  const list=document.getElementById("rewardProgressList");
+  if(!wallet||!rules||!list) return;
+
+  if(rewardConfig.enabled===false){
+    document.getElementById("rewardBox").style.display="none";
+    return;
+  }
+  document.getElementById("rewardBox").style.display="block";
+
+  const cfg={...DEFAULT_REWARD_CONFIG,...rewardConfig};
+  rules.innerHTML=
+    `<strong>Règle :</strong> pour gagner <strong>${formatMoney(cfg.amount)}</strong> sur un chapitre, `+
+    `je dois réaliser <strong>${cfg.requiredOpenings} consultations validées</strong> et `+
+    `<strong>${cfg.requiredSuccessfulTests} tests à ${cfg.minScorePct}% minimum</strong> `+
+    `dans un délai de <strong>${cfg.windowHours} h</strong>. `+
+    `Une consultation est validée après ${cfg.minReadSeconds} s dans le chapitre`+
+    (cfg.cooldownMinutes>0 ? `, avec au moins ${cfg.cooldownMinutes} min entre deux consultations comptées.` : ".");
+
+  const totalDue=Object.values(rewardProgress)
+    .filter(p=>p?.earned===true && p?.paid!==true)
+    .reduce((s,p)=>s+(Number(p.amountEarned)||0),0);
+  wallet.textContent=formatMoney(totalDue);
+
+  list.innerHTML="";
+  const ids=activeRewardIds();
+
+  ids.forEach(id=>{
+    const c=rewardCfgFor(id);
+    const p=rewardProgress[id]||{};
+    const opens=Number(p.validOpenings)||0;
+    const tests=Number(p.successfulTests)||0;
+    const start=tsMillis(p.cycleStartedAt);
+    const deadline=start ? start+c.windowHours*3600000 : null;
+    const remaining=deadline ? deadline-Date.now() : null;
+    const openPct=Math.min(100,Math.round(opens/c.requiredOpenings*100));
+    const testPct=Math.min(100,Math.round(tests/c.requiredSuccessfulTests*100));
+    const overall=Math.min(openPct,testPct);
+
+    const card=document.createElement("article");
+    card.className="reward-progress-card";
+
+    let stateText="Défi pas encore commencé";
+    let stateClass="reward-pending";
+    if(p.earned){
+      stateText=p.paid ? `✅ ${formatMoney(p.amountEarned)} gagné et versé` : `🎉 ${formatMoney(p.amountEarned)} gagné !`;
+      stateClass="reward-won";
+    }else if(start && remaining<=0){
+      stateText="⏱️ Délai dépassé — un nouveau défi commencera à la prochaine ouverture";
+      stateClass="reward-expired";
+    }else if(start){
+      stateText=`⏳ Temps restant : ${formatRemaining(remaining)}`;
+    }
+
+    card.innerHTML=`
+      <h4>🏅 ${exerciseTitle(id)}</h4>
+      <div class="reward-mini"><span>Consultations</span><strong>${opens}/${c.requiredOpenings}</strong></div>
+      <div class="reward-mini"><span>Tests réussis</span><strong>${tests}/${c.requiredSuccessfulTests}</strong></div>
+      <div class="reward-bar"><div style="width:${overall}%"></div></div>
+      <div class="reward-state ${stateClass}">${stateText}</div>
+    `;
+    list.appendChild(card);
+  });
+
+  if(!ids.length){
+    list.innerHTML='<div class="reward-progress-card">Aucun défi actif pour le moment.</div>';
+  }
+}
+
+function currentExerciseStillOpen(id){
+  const hash=location.hash;
+  if(id==="puissances") return hash==="#powersView";
+  if(id==="pythagore") return hash==="#pythView";
+  return hash==="#dynamicView" && activeDynamic?.id===id;
+}
+
+async function ensureRewardCycle(id){
+  const c=rewardCfgFor(id);
+  if(!c.enabled) return null;
+
+  await ensureAuth();
+  const ref=doc(db,"eleves","abel","recompenses",id);
+  const snap=await getDoc(ref);
+  let d=snap.exists()?snap.data():null;
+
+  if(d?.earned) return d;
+
+  const start=tsMillis(d?.cycleStartedAt);
+  const expired=start && (Date.now()-start > c.windowHours*3600000);
+
+  if(!d || !start || expired){
+    await setDoc(ref,{
+      exerciseId:id,
+      cycleStartedAt:serverTimestamp(),
+      validOpenings:0,
+      successfulTests:0,
+      totalTests:0,
+      lastValidOpenAt:null,
+      earned:false,
+      earnedAt:null,
+      amountEarned:0,
+      paid:false,
+      updatedAt:serverTimestamp()
+    },{merge:false});
+    return null;
+  }
+  return d;
+}
+
+async function evaluateReward(id){
+  const c=rewardCfgFor(id);
+  if(!c.enabled) return;
+
+  const ref=doc(db,"eleves","abel","recompenses",id);
+  const snap=await getDoc(ref);
+  if(!snap.exists()) return;
+  const p=snap.data();
+  if(p.earned) return;
+
+  const start=tsMillis(p.cycleStartedAt);
+  if(!start || Date.now()-start>c.windowHours*3600000) return;
+
+  if((Number(p.validOpenings)||0)>=c.requiredOpenings &&
+     (Number(p.successfulTests)||0)>=c.requiredSuccessfulTests){
+    await setDoc(ref,{
+      earned:true,
+      earnedAt:serverTimestamp(),
+      amountEarned:Number(c.amount)||0,
+      paid:false,
+      updatedAt:serverTimestamp()
+    },{merge:true});
+  }
+}
+
+async function validateRewardOpening(id){
+  const c=rewardCfgFor(id);
+  if(!c.enabled || document.visibilityState!=="visible" || !currentExerciseStillOpen(id)) return;
+
+  await ensureRewardCycle(id);
+  const ref=doc(db,"eleves","abel","recompenses",id);
+  const snap=await getDoc(ref);
+  if(!snap.exists()) return;
+  const p=snap.data();
+  if(p.earned) return;
+
+  const start=tsMillis(p.cycleStartedAt);
+  if(!start || Date.now()-start>c.windowHours*3600000) return;
+
+  const last=tsMillis(p.lastValidOpenAt);
+  const cooldownMs=(Number(c.cooldownMinutes)||0)*60000;
+  if(last && Date.now()-last<cooldownMs) return;
+
+  await setDoc(ref,{
+    validOpenings:increment(1),
+    lastValidOpenAt:serverTimestamp(),
+    updatedAt:serverTimestamp()
+  },{merge:true});
+  await evaluateReward(id);
+}
+
+async function rewardOnOpen(id){
+  const c=rewardCfgFor(id);
+  if(!c.enabled) return;
+  try{
+    const p=await ensureRewardCycle(id);
+    if(p?.earned) return;
+
+    if(rewardTimers.has(id)) clearTimeout(rewardTimers.get(id));
+    const timer=setTimeout(()=>{
+      validateRewardOpening(id).catch(err=>console.warn("Validation consultation",err));
+      rewardTimers.delete(id);
+    },Math.max(5,Number(c.minReadSeconds)||60)*1000);
+    rewardTimers.set(id,timer);
+  }catch(err){
+    console.warn("Démarrage défi récompense",err);
+  }
+}
+
+async function rewardOnCompleted(id,score,total){
+  const c=rewardCfgFor(id);
+  if(!c.enabled) return;
+  try{
+    await ensureRewardCycle(id);
+    const ref=doc(db,"eleves","abel","recompenses",id);
+    const snap=await getDoc(ref);
+    if(!snap.exists()) return;
+    const p=snap.data();
+    if(p.earned) return;
+
+    const start=tsMillis(p.cycleStartedAt);
+    if(!start || Date.now()-start>c.windowHours*3600000) return;
+
+    const pct=total>0 ? (Number(score)||0)/Number(total)*100 : 0;
+    const update={
+      totalTests:increment(1),
+      updatedAt:serverTimestamp()
+    };
+    if(pct>=Number(c.minScorePct||80)){
+      update.successfulTests=increment(1);
+    }
+    await setDoc(ref,update,{merge:true});
+    await evaluateReward(id);
+  }catch(err){
+    console.warn("Comptage test récompense",err);
+  }
+}
+
+
+
 let studentConfig={puissances:true,pythagore:true};
 let dynamicActivities={};
 let activeDynamic=null;
@@ -636,6 +934,7 @@ function createDynamicCard(a){
   link.addEventListener("click",()=>{
     renderDynamicActivity(a);
     registerOpen(a.id);
+    rewardOnOpen(a.id);
   });
   return link;
 }
@@ -782,8 +1081,11 @@ document.getElementById("dynamicCheckNumber").addEventListener("click",()=>{
 document.getElementById("dynamicNext").addEventListener("click",()=>{dqIndex++;renderDynamicQuestion();});
 document.getElementById("dynamicFinish").addEventListener("click",async()=>{
   const total=activeDynamic.quiz.length;
-  try{await saveExercise({exerciseId:activeDynamic.id,exerciseName:activeDynamic.title,type:"completed",total,answered:total,score:dqScore});}
-  catch(e){console.warn("Sauvegarde test importé",e);}
+  try{
+    await saveExercise({exerciseId:activeDynamic.id,exerciseName:activeDynamic.title,type:"completed",total,answered:total,score:dqScore});
+    await rewardOnCompleted(activeDynamic.id,dqScore,total);
+  }catch(e){console.warn("Sauvegarde test importé",e);}
+  document.getElementById("dynamicFinish").disabled=true;
   document.getElementById("dynamicTestOverlay").classList.remove("active");
   alert("Test terminé : "+dqScore+" / "+total);
 });
@@ -865,6 +1167,25 @@ async function startParentPilotage(){
     await ensureAuth();
 
     onSnapshot(
+      doc(db,"eleves","abel","config","recompenses"),
+      snap=>{
+        rewardConfig=Object.assign({},DEFAULT_REWARD_CONFIG,snap.exists()?snap.data():{});
+        renderRewards();
+      },
+      err=>console.warn("Lecture règles récompenses impossible :",err)
+    );
+
+    onSnapshot(
+      collection(db,"eleves","abel","recompenses"),
+      snap=>{
+        rewardProgress={};
+        snap.forEach(ds=>rewardProgress[ds.id]=ds.data());
+        renderRewards();
+      },
+      err=>console.warn("Lecture progression récompenses impossible :",err)
+    );
+
+    onSnapshot(
       collection(db,"eleves","abel","catalogue"),
       snap=>{
         dynamicActivities={};
@@ -873,6 +1194,7 @@ async function startParentPilotage(){
           if(d?.activity?.id) dynamicActivities[d.activity.id]=d.activity;
         });
         renderDynamicCards();
+        renderRewards();
       },
       err=>console.warn("Lecture catalogue impossible :",err)
     );
@@ -882,13 +1204,18 @@ async function startParentPilotage(){
       snap=>{
         studentConfig=Object.assign({puissances:true,pythagore:true},snap.exists()?snap.data():{});
         applyAllVisibility();
+        renderRewards();
       },
       err=>console.warn("Lecture configuration Parent impossible :",err)
     );
 
     document.querySelectorAll("[data-exercise-id]").forEach(card=>{
       if(card.classList.contains("dynamic-imported"))return;
-      card.addEventListener("click",()=>registerOpen(card.dataset.exerciseId));
+      card.addEventListener("click",()=>{
+        const id=card.dataset.exerciseId;
+        registerOpen(id);
+        rewardOnOpen(id);
+      });
     });
   }catch(err){
     console.warn("Pilotage Parent indisponible :",err);
@@ -903,6 +1230,8 @@ try{
   console.error("Connexion Firebase élève impossible :",e);
 }
 
+setInterval(renderRewards,60000);
+
 window.addEventListener("message",async e=>{
   const m=e.data;
   if(!m||m.source!=="abel-maths-exercise")return;
@@ -911,6 +1240,7 @@ window.addEventListener("message",async e=>{
     setSync("Synchronisation…");
     await saveExercise(m);
     if(m.type==="completed"){
+      await rewardOnCompleted(m.exerciseId,Number(m.score)||0,Number(m.total)||8);
       setSync("✓ Résultat final envoyé : "+m.exerciseName+" "+(m.score||0)+"/"+(m.total||8));
     }else if(m.type==="progress"){
       setSync("✓ Progression envoyée : "+m.exerciseName+" "+(m.answered||0)+"/"+(m.total||8));
