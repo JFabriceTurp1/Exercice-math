@@ -138,6 +138,11 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
 .dynamic-progress>div{height:100%;background:linear-gradient(90deg,#2563eb,#16a34a);width:0}
 .dynamic-number-input{width:100%;padding:13px;border:1px solid var(--border);border-radius:12px;font-size:1.1rem;margin:8px 0}
 .dynamic-primary{border:0;border-radius:12px;padding:12px 16px;background:#2563eb;color:#fff;font-weight:850;cursor:pointer}
+.dynamic-save-status{margin-top:10px;padding:10px 12px;border-radius:10px;background:#f8fafc;color:#475569;font-weight:800;display:none}
+.dynamic-save-status.show{display:block}
+.dynamic-save-status.ok{background:#dcfce7;color:#166534}
+.dynamic-save-status.err{background:#fee2e2;color:#991b1b}
+
 
 @media(max-width:700px){
   .exercise-grid{grid-template-columns:1fr}
@@ -375,6 +380,7 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
         <div id="dynamicFeedback" class="dynamic-feedback">À toi de jouer !</div>
         <button id="dynamicNext" class="dynamic-primary" style="display:none;margin-top:12px">Question suivante</button>
         <button id="dynamicFinish" class="dynamic-primary" style="display:none;margin-top:12px;width:100%">✅ Valider mon test</button>
+        <div id="dynamicSaveStatus" class="dynamic-save-status"></div>
       </div>
     </div>
   </div>
@@ -1211,6 +1217,12 @@ function renderDynamicActivity(a){
 function startDynamicTest(){
   if(!activeDynamic)return;
   dqIndex=0;dqScore=0;dqAnswered=false;
+  const finish=document.getElementById("dynamicFinish");
+  finish.disabled=false;
+  finish.textContent="✅ Valider mon test";
+  const saveStatus=document.getElementById("dynamicSaveStatus");
+  saveStatus.className="dynamic-save-status";
+  saveStatus.textContent="";
   document.getElementById("dynamicScore").textContent="0";
   document.getElementById("dynamicTotal").textContent=String(activeDynamic.quiz.length);
   document.getElementById("dynamicTestOverlay").classList.add("active");
@@ -1265,14 +1277,51 @@ document.getElementById("dynamicCheckNumber").addEventListener("click",()=>{
 });
 document.getElementById("dynamicNext").addEventListener("click",()=>{dqIndex++;renderDynamicQuestion();});
 document.getElementById("dynamicFinish").addEventListener("click",async()=>{
+  const btn=document.getElementById("dynamicFinish");
+  if(btn.disabled) return;
+
   const total=activeDynamic.quiz.length;
+  const saveStatus=document.getElementById("dynamicSaveStatus");
+  btn.disabled=true;
+  btn.textContent="⏳ Enregistrement…";
+  saveStatus.className="dynamic-save-status show";
+  saveStatus.textContent="Enregistrement du résultat…";
+
+  const syncId=queueCompletedAttempt({
+    exerciseId:activeDynamic.id,
+    exerciseName:activeDynamic.title,
+    score:dqScore,
+    total,
+    answered:total
+  });
+
   try{
-    await saveExercise({exerciseId:activeDynamic.id,exerciseName:activeDynamic.title,type:"completed",total,answered:total,score:dqScore});
+    await saveExercise({
+      exerciseId:activeDynamic.id,
+      exerciseName:activeDynamic.title,
+      type:"completed",
+      total,
+      answered:total,
+      score:dqScore,
+      syncId
+    });
     await rewardOnCompleted(activeDynamic.id,dqScore,total);
-  }catch(e){console.warn("Sauvegarde test importé",e);}
-  document.getElementById("dynamicFinish").disabled=true;
-  document.getElementById("dynamicTestOverlay").classList.remove("active");
-  alert("Test terminé : "+dqScore+" / "+total);
+
+    saveStatus.className="dynamic-save-status show ok";
+    saveStatus.textContent="✅ Résultat enregistré : "+dqScore+" / "+total;
+    btn.textContent="✅ Test enregistré";
+
+    setTimeout(()=>{
+      document.getElementById("dynamicTestOverlay").classList.remove("active");
+      alert("Test enregistré : "+dqScore+" / "+total);
+    },450);
+  }catch(e){
+    console.warn("Sauvegarde test importé",e);
+    saveStatus.className="dynamic-save-status show err";
+    saveStatus.textContent="⚠ Le résultat est conservé sur cet appareil et sera renvoyé automatiquement.";
+    btn.disabled=false;
+    btn.textContent="↻ Réessayer l’enregistrement";
+  }
 });
 
 
@@ -1300,6 +1349,85 @@ async function ensureAuth(){
   }
 }
 
+
+const PENDING_ATTEMPTS_KEY="abel_pending_attempts_v1";
+
+function loadPendingAttempts(){
+  try{
+    const raw=localStorage.getItem(PENDING_ATTEMPTS_KEY);
+    const arr=raw?JSON.parse(raw):[];
+    return Array.isArray(arr)?arr:[];
+  }catch(e){
+    return [];
+  }
+}
+
+function storePendingAttempts(arr){
+  try{
+    localStorage.setItem(PENDING_ATTEMPTS_KEY,JSON.stringify(arr));
+  }catch(e){}
+}
+
+function createAttemptId(exerciseId){
+  const rand=(crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2)+Date.now().toString(36);
+  return `${exerciseId}_${rand}`.replace(/[^a-zA-Z0-9_-]/g,"_");
+}
+
+function queueCompletedAttempt(msg){
+  const arr=loadPendingAttempts();
+  const syncId=msg.syncId || createAttemptId(msg.exerciseId);
+  if(!arr.some(x=>x.syncId===syncId)){
+    arr.push({
+      syncId,
+      exerciseId:msg.exerciseId,
+      exerciseName:msg.exerciseName,
+      score:Number(msg.score)||0,
+      total:Number(msg.total)||8,
+      answered:Number(msg.answered)||Number(msg.total)||8,
+      queuedAt:new Date().toISOString()
+    });
+    storePendingAttempts(arr);
+  }
+  return syncId;
+}
+
+function removePendingAttempt(syncId){
+  storePendingAttempts(loadPendingAttempts().filter(x=>x.syncId!==syncId));
+}
+
+async function writeCompletedAttempt(msg){
+  const syncId=msg.syncId || queueCompletedAttempt(msg);
+  const historyRef=doc(db,"eleves","abel","historique",syncId);
+
+  // The history entry is the source of truth. setDoc with a stable id makes retries idempotent.
+  await setDoc(historyRef,{
+    exerciceId:msg.exerciseId,
+    exerciceNom:msg.exerciseName,
+    score:Number(msg.score)||0,
+    totalQuestions:Number(msg.total)||8,
+    pourcentage:Math.round((Number(msg.score)||0)/(Number(msg.total)||8)*100),
+    date:serverTimestamp()
+  },{merge:false});
+
+  removePendingAttempt(syncId);
+  return syncId;
+}
+
+async function retryPendingAttempts(){
+  const arr=loadPendingAttempts();
+  if(!arr.length) return;
+  for(const item of arr){
+    try{
+      await ensureAuth();
+      await writeCompletedAttempt(item);
+      await rewardOnCompleted(item.exerciseId,item.score,item.total);
+      console.log("[sync] Tentative en attente récupérée :",item.exerciseName,item.score+"/"+item.total);
+    }catch(err){
+      console.warn("[sync] Tentative encore en attente :",item.exerciseName,err);
+    }
+  }
+}
+
 async function saveExercise(msg){
   const user=await ensureAuth();
   if(!user) throw new Error("Utilisateur Firebase absent");
@@ -1312,6 +1440,12 @@ async function saveExercise(msg){
   const attempts=(old.tentatives||0)+(msg.type==="completed"?1:0);
   const best=msg.type==="completed"?Math.max(old.meilleurScore||0,lastScore):(old.meilleurScore||0);
 
+  // For a completed test, queue it locally BEFORE any remote write.
+  let syncId=msg.syncId||null;
+  if(msg.type==="completed"){
+    syncId=queueCompletedAttempt({...msg,syncId});
+  }
+
   const payload={
     nom:msg.exerciseName,
     dernierScore:msg.type==="completed"?lastScore:(old.dernierScore??null),
@@ -1323,28 +1457,25 @@ async function saveExercise(msg){
     derniereActivite:serverTimestamp(),
     majPar:"eleve"
   };
+
+  // Summary can be reconstructed; history is written idempotently below.
   await setDoc(ref,payload,{merge:true});
 
-  // Copie locale de sécurité : utile si le réseau coupe juste après l'exercice.
   try{
     localStorage.setItem("abel_last_sync_"+msg.exerciseId, JSON.stringify({
       score:lastScore,
       total,
       type:msg.type,
+      syncId,
       date:new Date().toISOString()
     }));
   }catch(e){}
 
   if(msg.type==="completed"){
-    await addDoc(collection(db,"eleves","abel","historique"),{
-      exerciceId:msg.exerciseId,
-      exerciceNom:msg.exerciseName,
-      score:lastScore,
-      totalQuestions:total,
-      pourcentage:Math.round(lastScore/total*100),
-      date:serverTimestamp()
-    });
+    await writeCompletedAttempt({...msg,syncId});
   }
+
+  return syncId;
 }
 
 async function startParentPilotage(){
@@ -1411,11 +1542,16 @@ try{
   const user=await ensureAuth();
   console.log("Firebase anonyme connecté :",user.uid);
   await startParentPilotage();
+  await retryPendingAttempts();
 }catch(e){
   console.error("Connexion Firebase élève impossible :",e);
 }
 
 setInterval(renderRewards,60000);
+window.addEventListener("online",()=>retryPendingAttempts().catch(console.warn));
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible") retryPendingAttempts().catch(console.warn);
+});
 window.addEventListener("hashchange",()=>{
   if(!currentExerciseId()) closeAttentionModal();
 });
@@ -1426,6 +1562,9 @@ window.addEventListener("message",async e=>{
   console.log("Événement exercice reçu :",m);
   try{
     setSync("Synchronisation…");
+    if(m.type==="completed" && !m.syncId){
+      m.syncId=queueCompletedAttempt(m);
+    }
     await saveExercise(m);
     if(m.type==="completed"){
       await rewardOnCompleted(m.exerciseId,Number(m.score)||0,Number(m.total)||8);
