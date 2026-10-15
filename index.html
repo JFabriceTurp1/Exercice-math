@@ -98,6 +98,14 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
 .reward-won{color:#166534}
 .reward-pending{color:#92400e}
 .reward-expired{color:#991b1b}
+.attention-modal{position:fixed;inset:0;z-index:5000;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;padding:18px}
+.attention-modal.active{display:flex}
+.attention-card{width:min(520px,100%);background:#fff;border-radius:20px;padding:22px;box-shadow:0 22px 60px rgba(0,0,0,.25)}
+.attention-card h3{margin-top:0}
+.attention-choice{width:100%;text-align:left;border:1px solid #dbe3ef;background:#fff;border-radius:11px;padding:11px;margin:5px 0;font-weight:750;cursor:pointer}
+.attention-choice:hover{background:#f8fafc}
+.attention-status{margin-top:12px;padding:10px 12px;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-weight:800}
+
 
 .dynamic-page{flex:1;overflow:auto;padding:18px}
 .dynamic-card{max-width:900px;margin:0 auto 16px;background:#fff;border:1px solid var(--border);border-radius:18px;padding:20px;box-shadow:0 6px 20px rgba(15,23,42,.05)}
@@ -372,6 +380,16 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
   </div>
 </div>
 
+
+<div id="attentionModal" class="attention-modal">
+  <div class="attention-card">
+    <h3>👀 Petite vérification</h3>
+    <p id="attentionQuestion">Une question rapide pour valider ta consultation.</p>
+    <div id="attentionChoices"></div>
+    <div id="attentionStatus" class="attention-status">Choisis la bonne réponse.</div>
+  </div>
+</div>
+
 <script>
 (function(){
   const CODE="2205";
@@ -634,14 +652,20 @@ const DEFAULT_REWARD_CONFIG={
   requiredSuccessfulTests:3,
   minScorePct:80,
   windowHours:72,
-  minReadSeconds:60,
-  cooldownMinutes:30,
+  minReadSeconds:120,
+  minInteractions:3,
+  inactivitySeconds:90,
+  requireCheckQuestion:true,
+  cooldownMinutes:60,
   exerciseEnabled:{}
 };
 
 let rewardConfig={...DEFAULT_REWARD_CONFIG};
 let rewardProgress={};
 const rewardTimers=new Map();
+const consultationSessions=new Map();
+let attentionExerciseId=null;
+let attentionQuestionData=null;
 
 function rewardCfgFor(id){
   const enabledGlobal=rewardConfig.enabled!==false;
@@ -701,7 +725,9 @@ function renderRewards(){
     `je dois réaliser <strong>${cfg.requiredOpenings} consultations validées</strong> et `+
     `<strong>${cfg.requiredSuccessfulTests} tests à ${cfg.minScorePct}% minimum</strong> `+
     `dans un délai de <strong>${cfg.windowHours} h</strong>. `+
-    `Une consultation est validée après ${cfg.minReadSeconds} s dans le chapitre`+
+    `Une consultation est validée après ${cfg.minReadSeconds} s d’activité réelle, `+
+    `${cfg.minInteractions||3} interactions minimum`+
+    (cfg.requireCheckQuestion!==false ? ` et une mini-question réussie` : ``)+
     (cfg.cooldownMinutes>0 ? `, avec au moins ${cfg.cooldownMinutes} min entre deux consultations comptées.` : ".");
 
   const totalDue=Object.values(rewardProgress)
@@ -752,13 +778,6 @@ function renderRewards(){
   if(!ids.length){
     list.innerHTML='<div class="reward-progress-card">Aucun défi actif pour le moment.</div>';
   }
-}
-
-function currentExerciseStillOpen(id){
-  const hash=location.hash;
-  if(id==="puissances") return hash==="#powersView";
-  if(id==="pythagore") return hash==="#pythView";
-  return hash==="#dynamicView" && activeDynamic?.id===id;
 }
 
 async function ensureRewardCycle(id){
@@ -819,49 +838,215 @@ async function evaluateReward(id){
   }
 }
 
-async function validateRewardOpening(id){
+
+const BUILTIN_CHECKS={
+  puissances:[
+    {q:"Dans 3⁴, quel nombre est l’exposant ?",choices:["3","4","12"],answer:1},
+    {q:"Que signifie 2³ ?",choices:["2 × 2 × 2","2 + 2 + 2","3 × 3"],answer:0}
+  ],
+  pythagore:[
+    {q:"Dans un triangle rectangle, quel côté est l’hypoténuse ?",choices:["Le côté opposé à l’angle droit","Le plus petit côté","Toujours le côté horizontal"],answer:0},
+    {q:"Pour le triangle 3-4-5, quelle égalité est correcte ?",choices:["3² + 4² = 5²","3 + 4 = 5","5² + 4² = 3²"],answer:0}
+  ]
+};
+
+function currentExerciseId(){
+  if(location.hash==="#powersView") return "puissances";
+  if(location.hash==="#pythView") return "pythagore";
+  if(location.hash==="#dynamicView" && activeDynamic?.id) return activeDynamic.id;
+  return null;
+}
+
+function currentExerciseStillOpen(id){
+  return currentExerciseId()===id;
+}
+
+function consultationState(id){
+  if(!consultationSessions.has(id)){
+    consultationSessions.set(id,{
+      activeSeconds:0,
+      interactions:0,
+      lastActivity:Date.now(),
+      lastInteractionCountedAt:0,
+      checkShown:false,
+      validated:false
+    });
+  }
+  return consultationSessions.get(id);
+}
+
+function recordConsultationInteraction(){
+  const id=currentExerciseId();
+  if(!id) return;
+  const s=consultationState(id);
+  s.lastActivity=Date.now();
+  if(Date.now()-s.lastInteractionCountedAt>=5000){
+    s.interactions++;
+    s.lastInteractionCountedAt=Date.now();
+  }
+}
+
+["click","pointerdown","keydown","touchstart"].forEach(evt=>{
+  document.addEventListener(evt,recordConsultationInteraction,{passive:true});
+});
+window.addEventListener("scroll",recordConsultationInteraction,{passive:true,capture:true});
+
+function chooseCheckQuestion(id){
+  if(BUILTIN_CHECKS[id]){
+    const bank=BUILTIN_CHECKS[id];
+    return bank[Math.floor(Math.random()*bank.length)];
+  }
+  const a=dynamicActivities[id];
+  if(a?.quiz){
+    const choices=a.quiz.filter(q=>q.type==="choice" && Array.isArray(q.choices) && Number.isInteger(q.answer));
+    if(choices.length){
+      const q=choices[Math.floor(Math.random()*choices.length)];
+      return {q:q.question,choices:q.choices,answer:q.answer};
+    }
+  }
+  return null;
+}
+
+function closeAttentionModal(){
+  document.getElementById("attentionModal").classList.remove("active");
+  attentionExerciseId=null;
+  attentionQuestionData=null;
+}
+
+async function countValidatedConsultation(id){
   const c=rewardCfgFor(id);
-  if(!c.enabled || document.visibilityState!=="visible" || !currentExerciseStillOpen(id)) return;
+  if(!c.enabled) return false;
 
   await ensureRewardCycle(id);
   const ref=doc(db,"eleves","abel","recompenses",id);
   const snap=await getDoc(ref);
-  if(!snap.exists()) return;
+  if(!snap.exists()) return false;
   const p=snap.data();
-  if(p.earned) return;
+  if(p.earned) return false;
 
   const start=tsMillis(p.cycleStartedAt);
-  if(!start || Date.now()-start>c.windowHours*3600000) return;
+  if(!start || Date.now()-start>c.windowHours*3600000) return false;
 
   const last=tsMillis(p.lastValidOpenAt);
   const cooldownMs=(Number(c.cooldownMinutes)||0)*60000;
-  if(last && Date.now()-last<cooldownMs) return;
+  if(last && Date.now()-last<cooldownMs) return false;
 
   await setDoc(ref,{
     validOpenings:increment(1),
     lastValidOpenAt:serverTimestamp(),
     updatedAt:serverTimestamp()
   },{merge:true});
+
+  consultationState(id).validated=true;
   await evaluateReward(id);
+  return true;
+}
+
+async function showAttentionCheck(id){
+  const c=rewardCfgFor(id);
+  const s=consultationState(id);
+  if(s.checkShown || s.validated || !currentExerciseStillOpen(id)) return;
+  s.checkShown=true;
+
+  if(c.requireCheckQuestion===false){
+    const ok=await countValidatedConsultation(id);
+    if(!ok) s.checkShown=false;
+    return;
+  }
+
+  const q=chooseCheckQuestion(id);
+  if(!q){
+    const ok=await countValidatedConsultation(id);
+    if(!ok) s.checkShown=false;
+    return;
+  }
+
+  attentionExerciseId=id;
+  attentionQuestionData=q;
+  const modal=document.getElementById("attentionModal");
+  const question=document.getElementById("attentionQuestion");
+  const choices=document.getElementById("attentionChoices");
+  const status=document.getElementById("attentionStatus");
+  question.textContent=q.q;
+  choices.innerHTML="";
+  status.textContent="Choisis la bonne réponse.";
+  status.style.background="#eff6ff";
+  status.style.color="#1d4ed8";
+
+  q.choices.forEach((label,i)=>{
+    const b=document.createElement("button");
+    b.className="attention-choice";
+    b.textContent=label;
+    b.addEventListener("click",async()=>{
+      if(attentionExerciseId!==id) return;
+      if(i===q.answer){
+        b.style.background="#dcfce7";
+        status.textContent="✅ Consultation validée !";
+        status.style.background="#dcfce7";
+        status.style.color="#166534";
+        const ok=await countValidatedConsultation(id);
+        if(ok){
+          setTimeout(closeAttentionModal,700);
+        }else{
+          status.textContent="✅ Bonne réponse. Cette consultation est encore trop proche de la précédente pour être comptée.";
+          setTimeout(closeAttentionModal,1400);
+          s.checkShown=false;
+        }
+      }else{
+        b.style.background="#fee2e2";
+        status.textContent="❌ Pas tout à fait. Continue à consulter le chapitre et une nouvelle vérification te sera proposée.";
+        status.style.background="#fee2e2";
+        status.style.color="#991b1b";
+        s.checkShown=false;
+        s.activeSeconds=Math.max(0,s.activeSeconds-30);
+        setTimeout(closeAttentionModal,1400);
+      }
+    });
+    choices.appendChild(b);
+  });
+
+  modal.classList.add("active");
 }
 
 async function rewardOnOpen(id){
   const c=rewardCfgFor(id);
   if(!c.enabled) return;
   try{
-    const p=await ensureRewardCycle(id);
-    if(p?.earned) return;
-
-    if(rewardTimers.has(id)) clearTimeout(rewardTimers.get(id));
-    const timer=setTimeout(()=>{
-      validateRewardOpening(id).catch(err=>console.warn("Validation consultation",err));
-      rewardTimers.delete(id);
-    },Math.max(5,Number(c.minReadSeconds)||60)*1000);
-    rewardTimers.set(id,timer);
+    await ensureRewardCycle(id);
+    consultationSessions.set(id,{
+      activeSeconds:0,
+      interactions:0,
+      lastActivity:Date.now(),
+      lastInteractionCountedAt:0,
+      checkShown:false,
+      validated:false
+    });
   }catch(err){
-    console.warn("Démarrage défi récompense",err);
+    console.warn("Démarrage consultation récompense",err);
   }
 }
+
+setInterval(()=>{
+  const id=currentExerciseId();
+  if(!id) return;
+  const c=rewardCfgFor(id);
+  if(!c.enabled) return;
+
+  const s=consultationState(id);
+  const inactiveMs=Date.now()-s.lastActivity;
+  const activeNow=document.visibilityState==="visible" &&
+                  document.hasFocus() &&
+                  inactiveMs <= (Number(c.inactivitySeconds)||90)*1000;
+
+  if(activeNow && !s.validated) s.activeSeconds++;
+
+  if(!s.validated &&
+     s.activeSeconds >= (Number(c.minReadSeconds)||120) &&
+     s.interactions >= (Number(c.minInteractions)||3) &&
+     !s.checkShown){
+    showAttentionCheck(id).catch(err=>console.warn("Mini-question",err));
+  }
+},1000);
 
 async function rewardOnCompleted(id,score,total){
   const c=rewardCfgFor(id);
@@ -1231,6 +1416,9 @@ try{
 }
 
 setInterval(renderRewards,60000);
+window.addEventListener("hashchange",()=>{
+  if(!currentExerciseId()) closeAttentionModal();
+});
 
 window.addEventListener("message",async e=>{
   const m=e.data;
