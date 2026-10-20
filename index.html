@@ -1746,7 +1746,10 @@ async function startParentPilotage(){
         dynamicActivities={};
         snap.forEach(ds=>{
           const d=ds.data();
-          if(d?.activity?.id) dynamicActivities[d.activity.id]=d.activity;
+          if(d?.activity?.id){
+            const status=d.status||d.activity._status||null;
+            if(status===null || status==="published") dynamicActivities[d.activity.id]=d.activity;
+          }
         });
         renderDynamicCards();
         renderRewards();
