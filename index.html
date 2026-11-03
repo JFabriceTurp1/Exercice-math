@@ -130,7 +130,7 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
 .dynamic-test-btn{width:100%;border:0;border-radius:14px;padding:15px;background:#2563eb;color:#fff;font-size:1.05rem;font-weight:900;cursor:pointer}
 .dynamic-test-overlay{position:absolute;inset:44px 0 0;background:#eef3f9;display:none;z-index:30;overflow:auto}
 .dynamic-test-overlay.active{display:block}
-.dynamic-test-shell{max-width:760px;margin:auto;padding:18px}.dynamic-test-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}.dynamic-exit-test{border:0;border-radius:10px;padding:9px 11px;background:#e2e8f0;color:#0f172a;font-weight:850;cursor:pointer}
+.dynamic-test-shell{max-width:760px;margin:auto;padding:18px}.dynamic-test-head{position:sticky;top:0;z-index:50;display:flex;justify-content:space-between;align-items:center;gap:10px;margin:-4px -4px 10px;padding:8px;background:#fff;border-bottom:1px solid #e2e8f0}.dynamic-exit-test{border:0;border-radius:10px;padding:10px 12px;background:#e2e8f0;color:#0f172a;font-weight:900;cursor:pointer}.dynamic-recovery{display:none;margin-top:12px;padding:12px;border-radius:12px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412}.dynamic-recovery.show{display:block}.dynamic-recovery button{margin-top:8px;border:0;border-radius:9px;padding:9px 11px;background:#ea580c;color:#fff;font-weight:850;cursor:pointer}
 .dynamic-choice{width:100%;text-align:left;border:1px solid var(--border);background:#fff;border-radius:12px;padding:12px;margin:6px 0;font-weight:700;cursor:pointer}
 .dynamic-choice.correct{background:#dcfce7}.dynamic-choice.wrong{background:#fee2e2}
 .dynamic-feedback{padding:12px;border-radius:12px;margin-top:12px;background:#eff6ff;color:#1d4ed8;font-weight:750}
@@ -421,6 +421,11 @@ h1{margin:0;font-size:clamp(28px,4vw,42px)}
         <button id="dynamicNext" class="dynamic-primary" style="display:none;margin-top:12px">Question suivante</button>
         <button id="dynamicFinish" class="dynamic-primary" style="display:none;margin-top:12px;width:100%">✅ Valider mon test</button>
         <div id="dynamicSaveStatus" class="dynamic-save-status"></div>
+        <div id="dynamicRecovery" class="dynamic-recovery">
+          <strong>⚠ Cette question a rencontré un problème.</strong>
+          <div>Ta progression est conservée. Tu peux passer à la question suivante ou quitter le test.</div>
+          <button id="dynamicSkipQuestion">Passer cette question</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1213,10 +1218,74 @@ document.getElementById("subjectBack")?.addEventListener("click",showSubjects);
 let activeDynamic=null;
 let dqIndex=0,dqScore=0,dqAnswered=false;
 
+const TEST_STATE_KEY="abel_dynamic_test_state_v1";
+
+function saveDynamicTestState(){
+  if(!activeDynamic || !dynamicTestInProgress) return;
+  try{
+    localStorage.setItem(TEST_STATE_KEY,JSON.stringify({
+      exerciseId:activeDynamic.id,
+      index:dqIndex,
+      score:dqScore,
+      answered:dqAnswered,
+      savedAt:new Date().toISOString()
+    }));
+  }catch(e){}
+}
+
+function loadDynamicTestState(){
+  try{
+    const raw=localStorage.getItem(TEST_STATE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){
+    return null;
+  }
+}
+
+function clearDynamicTestState(){
+  try{ localStorage.removeItem(TEST_STATE_KEY); }catch(e){}
+}
+
+function canResumeDynamicTest(a){
+  const s=loadDynamicTestState();
+  return !!(s && a && s.exerciseId===a.id && Number.isInteger(s.index) && s.index>=0 && s.index<a.quiz.length);
+}
+
+function resumeDynamicTest(a){
+  const s=loadDynamicTestState();
+  if(!s || !a || s.exerciseId!==a.id) return false;
+  activeDynamic=a;
+  dqIndex=Math.max(0,Math.min(Number(s.index)||0,a.quiz.length-1));
+  dqScore=Math.max(0,Number(s.score)||0);
+  dqAnswered=!!s.answered;
+  dynamicTestInProgress=true;
+  dynamicSaving=false;
+  document.getElementById("dynamicScore").textContent=String(dqScore);
+  document.getElementById("dynamicTotal").textContent=String(a.quiz.length);
+  document.getElementById("dynamicTestOverlay").classList.add("active");
+  renderDynamicQuestion({restoreAnswered:dqAnswered});
+  return true;
+}
+
+function showDynamicRecovery(message){
+  const r=document.getElementById("dynamicRecovery");
+  if(!r) return;
+  r.classList.add("show");
+  const divs=r.querySelectorAll("div");
+  if(divs[0] && message) divs[0].textContent=message+" Ta progression est conservée.";
+}
+
+function hideDynamicRecovery(){
+  const r=document.getElementById("dynamicRecovery");
+  if(r) r.classList.remove("show");
+}
+
+
+
 let dynamicTestInProgress=false;
 let dynamicSaving=false;
 
-function resetDynamicTest({closeOverlay=true,clearActivity=false}={}){
+function resetDynamicTest({closeOverlay=true,clearActivity=false,preserveSavedState=false}={}){
   dqIndex=0;
   dqScore=0;
   dqAnswered=false;
@@ -1256,19 +1325,22 @@ function resetDynamicTest({closeOverlay=true,clearActivity=false}={}){
     feedback.style.background="#eff6ff";
     feedback.style.color="#1d4ed8";
   }
+  hideDynamicRecovery();
+  if(!preserveSavedState) clearDynamicTestState();
 
   if(clearActivity) activeDynamic=null;
 }
 
-function leaveDynamicTest({ask=true}={}){
+function leaveDynamicTest({ask=true,preserveProgress=false}={}){
   if(!dynamicTestInProgress){
-    resetDynamicTest({closeOverlay:true});
+    resetDynamicTest({closeOverlay:true,preserveSavedState:preserveProgress});
     return true;
   }
-  if(ask && !confirm("Quitter ce test ? Les réponses de ce test non terminé ne seront pas comptabilisées.")){
+  if(ask && !confirm("Quitter ce test ? Ta progression sera conservée et tu pourras le reprendre plus tard.")){
     return false;
   }
-  resetDynamicTest({closeOverlay:true});
+  if(preserveProgress || dynamicTestInProgress) saveDynamicTestState();
+  resetDynamicTest({closeOverlay:true,preserveSavedState:true});
   return true;
 }
 
@@ -1490,8 +1562,18 @@ function renderDynamicActivity(a){
 function startDynamicTest(){
   if(!activeDynamic || !Array.isArray(activeDynamic.quiz) || !activeDynamic.quiz.length) return;
 
+  if(canResumeDynamicTest(activeDynamic)){
+    if(confirm("Un test non terminé a été retrouvé. Veux-tu reprendre là où tu t’étais arrêté ?")){
+      resumeDynamicTest(activeDynamic);
+      return;
+    }
+    clearDynamicTestState();
+  }
+
   resetDynamicTest({closeOverlay:false});
   dynamicTestInProgress=true;
+  dqIndex=0; dqScore=0; dqAnswered=false;
+  saveDynamicTestState();
 
   const finish=document.getElementById("dynamicFinish");
   finish.disabled=false;
@@ -1514,36 +1596,63 @@ function normalizeTextAnswer(value,accentInsensitive=true){
   return s.replace(/[¡!¿?.,;:]/g,"").trim();
 }
 
-function renderDynamicQuestion(){
-  const q=activeDynamic.quiz[dqIndex];dqAnswered=false;
-  document.getElementById("dynamicLevel").textContent=q.level||("Question "+(dqIndex+1));
-  document.getElementById("dynamicQuestion").textContent=(dqIndex+1)+". "+q.question;
-  document.getElementById("dynamicBar").style.width=(dqIndex/activeDynamic.quiz.length*100)+"%";
-  const fb=document.getElementById("dynamicFeedback");fb.textContent="À toi de jouer !";fb.style.background="#eff6ff";fb.style.color="#1d4ed8";
-  document.getElementById("dynamicNext").style.display="none";document.getElementById("dynamicFinish").style.display="none";
-  const choices=document.getElementById("dynamicChoices");choices.innerHTML="";
-  const nz=document.getElementById("dynamicNumberZone");nz.style.display="none";
-  const tz=document.getElementById("dynamicTextZone");tz.style.display="none";
-  document.getElementById("dynamicNumberInput").value="";
-  document.getElementById("dynamicTextInput").value="";
+function renderDynamicQuestion({restoreAnswered=false}={}){
+  hideDynamicRecovery();
+  try{
+    if(!activeDynamic || !Array.isArray(activeDynamic.quiz)) throw new Error("activité absente");
+    const q=activeDynamic.quiz[dqIndex];
+    if(!q || typeof q!=="object") throw new Error("question invalide");
 
-  if(q.type==="choice"){
-    q.choices.forEach((label,i)=>{
-      const b=document.createElement("button");b.className="dynamic-choice";b.textContent=label;
-      b.addEventListener("click",()=>answerDynamicChoice(i,b));choices.appendChild(b);
-    });
-  }else if(q.type==="text"){
-    tz.style.display="block";
-  }else{
-    nz.style.display="block";
+    dqAnswered=restoreAnswered ? true : false;
+    document.getElementById("dynamicLevel").textContent=q.level||("Question "+(dqIndex+1));
+    document.getElementById("dynamicQuestion").textContent=(dqIndex+1)+". "+(q.question||"Question");
+    document.getElementById("dynamicBar").style.width=(dqIndex/activeDynamic.quiz.length*100)+"%";
+    const fb=document.getElementById("dynamicFeedback");
+    fb.textContent=restoreAnswered ? "Progression restaurée. Tu peux continuer." : "À toi de jouer !";
+    fb.style.background="#eff6ff";fb.style.color="#1d4ed8";
+    document.getElementById("dynamicNext").style.display="none";
+    document.getElementById("dynamicFinish").style.display="none";
+    const choices=document.getElementById("dynamicChoices");choices.innerHTML="";
+    const nz=document.getElementById("dynamicNumberZone");nz.style.display="none";
+    const tz=document.getElementById("dynamicTextZone");tz.style.display="none";
+    document.getElementById("dynamicNumberInput").value="";
+    document.getElementById("dynamicTextInput").value="";
+
+    if(restoreAnswered){
+      afterDynamicAnswer({skipSave:true});
+      return;
+    }
+
+    if(q.type==="choice"){
+      if(!Array.isArray(q.choices) || q.choices.length<2) throw new Error("choix manquants");
+      q.choices.forEach((label,i)=>{
+        const b=document.createElement("button");
+        b.className="dynamic-choice";
+        b.textContent=String(label);
+        b.addEventListener("click",()=>answerDynamicChoice(i,b));
+        choices.appendChild(b);
+      });
+    }else if(q.type==="text"){
+      tz.style.display="block";
+    }else if(q.type==="number"){
+      nz.style.display="block";
+    }else{
+      throw new Error("type de question non reconnu : "+String(q.type));
+    }
+  }catch(err){
+    console.error("Erreur affichage question",err);
+    saveDynamicTestState();
+    showDynamicRecovery("Impossible d’afficher correctement cette question.");
   }
 }
-
-function afterDynamicAnswer(){
+function afterDynamicAnswer({skipSave=false}={}){
   const total=activeDynamic.quiz.length;
   document.getElementById("dynamicScore").textContent=String(dqScore);
   document.getElementById("dynamicBar").style.width=((dqIndex+1)/total*100)+"%";
-  saveExercise({exerciseId:activeDynamic.id,exerciseName:activeDynamic.title,type:"progress",total,answered:dqIndex+1,score:dqScore}).catch(console.warn);
+  saveDynamicTestState();
+  if(!skipSave){
+    saveExercise({exerciseId:activeDynamic.id,exerciseName:activeDynamic.title,type:"progress",total,answered:dqIndex+1,score:dqScore}).catch(console.warn);
+  }
   if(dqIndex===total-1){
     const finish=document.getElementById("dynamicFinish");
     finish.disabled=false;
@@ -1595,13 +1704,30 @@ document.getElementById("dynamicCheckText").addEventListener("click",()=>{
   afterDynamicAnswer();
 });
 document.getElementById("dynamicExitTest").addEventListener("click",()=>{
-  leaveDynamicTest({ask:true});
+  leaveDynamicTest({ask:true,preserveProgress:true});
+});
+
+document.getElementById("dynamicSkipQuestion").addEventListener("click",()=>{
+  if(!dynamicTestInProgress || !activeDynamic) return;
+  const total=activeDynamic.quiz.length;
+  if(dqIndex>=total-1){
+    dqAnswered=true;
+    afterDynamicAnswer();
+    return;
+  }
+  dqIndex++;
+  dqAnswered=false;
+  saveDynamicTestState();
+  renderDynamicQuestion();
 });
 
 document.getElementById("dynamicNext").addEventListener("click",()=>{
   if(!dynamicTestInProgress || !activeDynamic) return;
   if(dqIndex>=activeDynamic.quiz.length-1) return;
+  saveDynamicTestState();
   dqIndex++;
+  dqAnswered=false;
+  saveDynamicTestState();
   renderDynamicQuestion();
 });
 document.getElementById("dynamicFinish").addEventListener("click",async()=>{
@@ -1652,6 +1778,7 @@ document.getElementById("dynamicFinish").addEventListener("click",async()=>{
     saveStatus.textContent="✅ Résultat enregistré : "+scoreSnapshot+" / "+total;
     btn.textContent="✅ Test enregistré";
     dynamicTestInProgress=false;
+    clearDynamicTestState();
 
     setTimeout(()=>{
       resetDynamicTest({closeOverlay:true});
@@ -1660,6 +1787,7 @@ document.getElementById("dynamicFinish").addEventListener("click",async()=>{
   }catch(e){
     console.warn("Sauvegarde test importé",e);
     dynamicSaving=false;
+    saveDynamicTestState();
     saveStatus.className="dynamic-save-status show err";
     saveStatus.textContent="⚠ Le résultat est conservé sur cet appareil. Tu peux réessayer l’enregistrement.";
     btn.disabled=false;
@@ -1901,12 +2029,14 @@ try{
 
 setInterval(renderRewards,60000);
 window.addEventListener("online",()=>retryPendingAttempts().catch(console.warn));
+window.addEventListener("pagehide",()=>{ if(dynamicTestInProgress) saveDynamicTestState(); });
+window.addEventListener("beforeunload",()=>{ if(dynamicTestInProgress) saveDynamicTestState(); });
 document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="visible") retryPendingAttempts().catch(console.warn);
 });
 window.addEventListener("hashchange",()=>{
   if(location.hash!=="#dynamicView"){
-    leaveDynamicTest({ask:false});
+    leaveDynamicTest({ask:false,preserveProgress:true});
   }
   if(!currentExerciseId()) closeAttentionModal();
 });
